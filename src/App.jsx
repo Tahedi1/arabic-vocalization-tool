@@ -2,14 +2,41 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Check, RotateCcw, Download, Upload, ChevronLeft, ChevronRight, ArrowLeft, ArrowRight, User } from 'lucide-react';
 
 const ArabicAnnotationTool = () => {
-  const [sentences, setSentences] = useState([]);
-  const [currentSentenceIdx, setCurrentSentenceIdx] = useState(0);
-  const [selectedCharIdx, setSelectedCharIdx] = useState(0);
-  const [corrections, setCorrections] = useState({});
-  const [history, setHistory] = useState([]);
-  const [annotatorName, setAnnotatorName] = useState('');
+  const [sentences, setSentences] = useState(() => {
+    const saved = localStorage.getItem('arabic_annotation_sentences');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [currentSentenceIdx, setCurrentSentenceIdx] = useState(() => {
+    const saved = localStorage.getItem('arabic_annotation_currentSentenceIdx');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [selectedCharIdx, setSelectedCharIdx] = useState(() => {
+    const saved = localStorage.getItem('arabic_annotation_selectedCharIdx');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [corrections, setCorrections] = useState(() => {
+    const saved = localStorage.getItem('arabic_annotation_corrections');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [history, setHistory] = useState(() => {
+    const saved = localStorage.getItem('arabic_annotation_history');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.map(item => ({
+        ...item,
+        timestamp: new Date(item.timestamp)
+      }));
+    }
+    return [];
+  });
+  const [annotatorName, setAnnotatorName] = useState(() => {
+    return localStorage.getItem('arabic_annotation_annotatorName') || '';
+  });
   const [showNameDialog, setShowNameDialog] = useState(false);
+  const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
+  const [recoveryFiles, setRecoveryFiles] = useState([]);
   const fileInputRef = useRef(null);
+  const recoveryFileInputRef = useRef(null);
 
   const diacritics = [
     { name: 'Fatha', symbol: '\u064E', key: '1' },
@@ -26,7 +53,29 @@ const ArabicAnnotationTool = () => {
     { name: 'Remove', symbol: '', key: '0' },
   ];
 
-  const parseText = (text) => {
+  useEffect(() => {
+    localStorage.setItem('arabic_annotation_sentences', JSON.stringify(sentences));
+  }, [sentences]);
+
+  useEffect(() => {
+    localStorage.setItem('arabic_annotation_currentSentenceIdx', currentSentenceIdx.toString());
+  }, [currentSentenceIdx]);
+
+  useEffect(() => {
+    localStorage.setItem('arabic_annotation_selectedCharIdx', selectedCharIdx.toString());
+  }, [selectedCharIdx]);
+
+  useEffect(() => {
+    localStorage.setItem('arabic_annotation_corrections', JSON.stringify(corrections));
+  }, [corrections]);
+
+  useEffect(() => {
+    localStorage.setItem('arabic_annotation_history', JSON.stringify(history));
+  }, [history]);
+
+  useEffect(() => {
+    localStorage.setItem('arabic_annotation_annotatorName', annotatorName);
+  }, [annotatorName]);
     const lines = text.split('\n').filter(line => line.trim());
     return lines.map((line, lineIdx) => {
       const words = [];
@@ -184,11 +233,73 @@ const ArabicAnnotationTool = () => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target.result;
-      setSentences(parseText(text));
-      setCurrentSentenceIdx(0);
-      setSelectedCharIdx(0);
-      setCorrections({});
-      setHistory([]);
+      const newSentences = parseText(text);
+      
+      // Check if content is different
+      const currentText = sentences.map(s => s.original).join('\n');
+      const newText = newSentences.map(s => s.original).join('\n');
+      
+      if (currentText !== newText) {
+        if (sentences.length > 0) {
+          const confirmLoad = window.confirm(
+            'Loading a new file will replace your current work. Are you sure you want to continue?'
+          );
+          if (!confirmLoad) return;
+        }
+        
+        setSentences(newSentences);
+        setCurrentSentenceIdx(0);
+        setSelectedCharIdx(0);
+        setCorrections({});
+        setHistory([]);
+      } else {
+        alert('This file contains the same text as currently loaded.');
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  const loadRecoveryFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const recoveryData = JSON.parse(event.target.result);
+        
+        // Validate recovery data
+        if (!recoveryData.sentences || !Array.isArray(recoveryData.sentences)) {
+          alert('Invalid recovery file format.');
+          return;
+        }
+
+        if (sentences.length > 0) {
+          const confirmLoad = window.confirm(
+            'Loading this recovery file will replace your current work. Continue?'
+          );
+          if (!confirmLoad) return;
+        }
+
+        // Restore all state
+        setSentences(recoveryData.sentences);
+        setCurrentSentenceIdx(recoveryData.currentSentenceIdx || 0);
+        setSelectedCharIdx(recoveryData.selectedCharIdx || 0);
+        setCorrections(recoveryData.corrections || {});
+        
+        // Restore history with proper date objects
+        const restoredHistory = (recoveryData.history || []).map(item => ({
+          ...item,
+          timestamp: new Date(item.timestamp)
+        }));
+        setHistory(restoredHistory);
+        
+        setAnnotatorName(recoveryData.annotatorName || '');
+        
+        alert('Recovery file loaded successfully!');
+      } catch (error) {
+        alert('Error loading recovery file: ' + error.message);
+      }
     };
     reader.readAsText(file, 'UTF-8');
   };
@@ -224,6 +335,17 @@ const ArabicAnnotationTool = () => {
       }))
     };
 
+    // Create recovery backup
+    const recoveryData = {
+      sentences,
+      currentSentenceIdx,
+      selectedCharIdx,
+      corrections,
+      history,
+      annotatorName,
+      exportDate: new Date().toISOString()
+    };
+
     const textBlob = new Blob([correctedText], { type: 'text/plain;charset=utf-8' });
     const textUrl = URL.createObjectURL(textBlob);
     const textLink = document.createElement('a');
@@ -238,7 +360,15 @@ const ArabicAnnotationTool = () => {
     reportLink.download = `${annotatorName}_annotation_report.json`;
     reportLink.click();
 
-    alert(`Exported:\n- ${annotatorName}_vocalized_output.txt\n- ${annotatorName}_annotation_report.json`);
+    // Export recovery file
+    const recoveryBlob = new Blob([JSON.stringify(recoveryData, null, 2)], { type: 'application/json' });
+    const recoveryUrl = URL.createObjectURL(recoveryBlob);
+    const recoveryLink = document.createElement('a');
+    recoveryLink.href = recoveryUrl;
+    recoveryLink.download = `${annotatorName}_recovery_backup.json`;
+    recoveryLink.click();
+
+    alert(`Exported:\n- ${annotatorName}_vocalized_output.txt\n- ${annotatorName}_annotation_report.json\n- ${annotatorName}_recovery_backup.json (for recovery)`);
   };
 
   const getDiacriticForChar = (charObj) => {
@@ -257,6 +387,7 @@ const ArabicAnnotationTool = () => {
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
           <h1 className="text-2xl font-bold text-gray-800 mb-4">Arabic Vocalization Tool</h1>
           <p className="text-gray-600 mb-6">Load a text file to begin annotation</p>
+          
           <input
             ref={fileInputRef}
             type="file"
@@ -264,16 +395,52 @@ const ArabicAnnotationTool = () => {
             onChange={loadFile}
             className="hidden"
           />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center gap-2 mx-auto"
-          >
-            <Upload size={20} />
-            Load Text File
-          </button>
+          <input
+            ref={recoveryFileInputRef}
+            type="file"
+            accept=".json"
+            onChange={loadRecoveryFile}
+            className="hidden"
+          />
+          
+          <div className="space-y-3">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center justify-center gap-2"
+            >
+              <Upload size={20} />
+              Load Text File
+            </button>
+            
+            <button
+              onClick={() => recoveryFileInputRef.current?.click()}
+              className="w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center justify-center gap-2"
+            >
+              <RotateCcw size={20} />
+              Load Recovery File
+            </button>
+          </div>
+          
           <p className="text-sm text-gray-500 mt-4">
-            Supported format: Plain text (.txt) with Arabic text
+            Supported formats: Plain text (.txt) or Recovery backup (.json)
           </p>
+          
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <p className="text-xs text-gray-600 mb-3">
+              💡 <strong>Tip:</strong> Export creates a recovery file that saves your complete progress
+            </p>
+            <button
+              onClick={() => {
+                if (window.confirm('Are you sure you want to clear all saved data?')) {
+                  localStorage.clear();
+                  window.location.reload();
+                }
+              }}
+              className="text-xs text-red-600 hover:text-red-700 underline"
+            >
+              Clear All Saved Data
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -377,9 +544,25 @@ const ArabicAnnotationTool = () => {
               <button
                 onClick={exportResults}
                 className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 flex items-center gap-2"
+                title="Export vocalized text, annotation report, and recovery backup"
               >
                 <Download size={16} />
                 Export
+              </button>
+              <input
+                ref={recoveryFileInputRef}
+                type="file"
+                accept=".json"
+                onChange={loadRecoveryFile}
+                className="hidden"
+              />
+              <button
+                onClick={() => recoveryFileInputRef.current?.click()}
+                className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 flex items-center gap-2"
+                title="Load a previously saved recovery backup"
+              >
+                <RotateCcw size={16} />
+                Recover
               </button>
             </div>
           </div>
@@ -428,8 +611,8 @@ const ArabicAnnotationTool = () => {
               </div>
             </div>
 
-            <div className="bg-amber-50 rounded-lg p-8 border-2 border-amber-200 mb-4" dir="rtl">
-              <div className="text-4xl leading-loose flex flex-wrap items-center justify-end gap-2" style={{ fontFamily: 'Amiri, Arial', direction: 'rtl' }}>
+            <div className="bg-amber-50 rounded-lg p-8 border-2 border-amber-200 mb-4">
+              <div className="text-4xl leading-loose" style={{ fontFamily: 'Amiri, Arial', direction: 'rtl', textAlign: 'right' }}>
                 {currentSentence.words.map((word, wIdx) => (
                   <React.Fragment key={wIdx}>
                     <span className="inline-flex bg-white rounded px-2 py-1 shadow-sm border border-amber-300">
@@ -628,6 +811,14 @@ const ArabicAnnotationTool = () => {
             Use left/right arrows (← →) to navigate characters within the current phrase. 
             Use up/down arrows (↑ ↓) to switch between phrases. 
             Press number keys 1-9 to apply diacritics. Set your name to export files as <strong>YourName_vocalized_output.txt</strong>
+          </p>
+        </div>
+
+        <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3">
+          <p className="text-sm text-green-900">
+            <strong>💾 Auto-Save & Recovery:</strong> Your work is automatically saved in browser cache. 
+            When you export, a recovery backup file (<strong>*_recovery_backup.json</strong>) is created. 
+            If cache is cleared, use the <strong>Recover</strong> button to restore your work from this backup file.
           </p>
         </div>
       </div>
