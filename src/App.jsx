@@ -2,10 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Check, RotateCcw, Download, Upload, ChevronLeft, ChevronRight, ArrowLeft, ArrowRight, User } from 'lucide-react';
 
 const ArabicAnnotationTool = () => {
-  const sampleInput = `الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ
-الرَّحْمَٰنِ الرَّحِيمِ
-مَالِكِ يَوْمِ الدِّينِ`;
-
   const [sentences, setSentences] = useState([]);
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState(0);
   const [selectedCharIdx, setSelectedCharIdx] = useState(0);
@@ -74,10 +70,6 @@ const ArabicAnnotationTool = () => {
       };
     });
   };
-
-  useEffect(() => {
-    setSentences(parseText(sampleInput));
-  }, []);
 
   const getCurrentChar = () => {
     if (!sentences[currentSentenceIdx]) return null;
@@ -259,7 +251,33 @@ const ArabicAnnotationTool = () => {
     return corrections[key] !== undefined;
   };
 
-  if (sentences.length === 0) return <div className="p-4">Loading...</div>;
+  if (sentences.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-4">Arabic Vocalization Tool</h1>
+          <p className="text-gray-600 mb-6">Load a text file to begin annotation</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt"
+            onChange={loadFile}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center gap-2 mx-auto"
+          >
+            <Upload size={20} />
+            Load Text File
+          </button>
+          <p className="text-sm text-gray-500 mt-4">
+            Supported format: Plain text (.txt) with Arabic text
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const currentSentence = sentences[currentSentenceIdx];
   const currentChar = getCurrentChar();
@@ -411,7 +429,7 @@ const ArabicAnnotationTool = () => {
             </div>
 
             <div className="bg-amber-50 rounded-lg p-8 border-2 border-amber-200 mb-4" dir="rtl">
-              <div className="text-4xl leading-loose flex flex-wrap-reverse items-center justify-start gap-2" style={{ fontFamily: 'Amiri, Arial', direction: 'rtl' }}>
+              <div className="text-4xl leading-loose flex flex-wrap items-center justify-end gap-2" style={{ fontFamily: 'Amiri, Arial', direction: 'rtl' }}>
                 {currentSentence.words.map((word, wIdx) => (
                   <React.Fragment key={wIdx}>
                     <span className="inline-flex bg-white rounded px-2 py-1 shadow-sm border border-amber-300">
