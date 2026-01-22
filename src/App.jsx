@@ -33,8 +33,6 @@ const ArabicAnnotationTool = () => {
     return localStorage.getItem('arabic_annotation_annotatorName') || '';
   });
   const [showNameDialog, setShowNameDialog] = useState(false);
-  const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
-  const [recoveryFiles, setRecoveryFiles] = useState([]);
   const fileInputRef = useRef(null);
   const recoveryFileInputRef = useRef(null);
 
@@ -76,6 +74,8 @@ const ArabicAnnotationTool = () => {
   useEffect(() => {
     localStorage.setItem('arabic_annotation_annotatorName', annotatorName);
   }, [annotatorName]);
+
+  const parseText = (text) => {
     const lines = text.split('\n').filter(line => line.trim());
     return lines.map((line, lineIdx) => {
       const words = [];
@@ -235,7 +235,6 @@ const ArabicAnnotationTool = () => {
       const text = event.target.result;
       const newSentences = parseText(text);
       
-      // Check if content is different
       const currentText = sentences.map(s => s.original).join('\n');
       const newText = newSentences.map(s => s.original).join('\n');
       
@@ -268,7 +267,6 @@ const ArabicAnnotationTool = () => {
       try {
         const recoveryData = JSON.parse(event.target.result);
         
-        // Validate recovery data
         if (!recoveryData.sentences || !Array.isArray(recoveryData.sentences)) {
           alert('Invalid recovery file format.');
           return;
@@ -281,13 +279,11 @@ const ArabicAnnotationTool = () => {
           if (!confirmLoad) return;
         }
 
-        // Restore all state
         setSentences(recoveryData.sentences);
         setCurrentSentenceIdx(recoveryData.currentSentenceIdx || 0);
         setSelectedCharIdx(recoveryData.selectedCharIdx || 0);
         setCorrections(recoveryData.corrections || {});
         
-        // Restore history with proper date objects
         const restoredHistory = (recoveryData.history || []).map(item => ({
           ...item,
           timestamp: new Date(item.timestamp)
@@ -335,7 +331,6 @@ const ArabicAnnotationTool = () => {
       }))
     };
 
-    // Create recovery backup
     const recoveryData = {
       sentences,
       currentSentenceIdx,
@@ -360,7 +355,6 @@ const ArabicAnnotationTool = () => {
     reportLink.download = `${annotatorName}_annotation_report.json`;
     reportLink.click();
 
-    // Export recovery file
     const recoveryBlob = new Blob([JSON.stringify(recoveryData, null, 2)], { type: 'application/json' });
     const recoveryUrl = URL.createObjectURL(recoveryBlob);
     const recoveryLink = document.createElement('a');
