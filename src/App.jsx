@@ -32,6 +32,9 @@ const ArabicAnnotationTool = () => {
   const [annotatorName, setAnnotatorName] = useState(() => {
     return localStorage.getItem('arabic_annotation_annotatorName') || '';
   });
+  const [inputFileName, setInputFileName] = useState(() => {
+    return localStorage.getItem('arabic_annotation_inputFileName') || '';
+  });
   const [showNameDialog, setShowNameDialog] = useState(false);
   const fileInputRef = useRef(null);
   const recoveryFileInputRef = useRef(null);
@@ -74,6 +77,10 @@ const ArabicAnnotationTool = () => {
   useEffect(() => {
     localStorage.setItem('arabic_annotation_annotatorName', annotatorName);
   }, [annotatorName]);
+
+  useEffect(() => {
+    localStorage.setItem('arabic_annotation_inputFileName', inputFileName);
+  }, [inputFileName]);
 
   const parseText = (text) => {
     const lines = text.split('\n').filter(line => line.trim());
@@ -226,6 +233,22 @@ const ArabicAnnotationTool = () => {
     setHistory(history.slice(0, -1));
   };
 
+  const getFileBaseName = (filename) => {
+    // Remove extension from filename
+    return filename.replace(/\.[^/.]+$/, '');
+  };
+
+  const getTimestamp = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `${year}${month}${day}_${hours}${minutes}${seconds}`;
+  };
+
   const loadFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -251,6 +274,7 @@ const ArabicAnnotationTool = () => {
         setSelectedCharIdx(0);
         setCorrections({});
         setHistory([]);
+        setInputFileName(file.name);
       } else {
         alert('This file contains the same text as currently loaded.');
       }
@@ -291,6 +315,7 @@ const ArabicAnnotationTool = () => {
         setHistory(restoredHistory);
         
         setAnnotatorName(recoveryData.annotatorName || '');
+        setInputFileName(recoveryData.inputFileName || '');
         
         alert('Recovery file loaded successfully!');
       } catch (error) {
@@ -316,8 +341,13 @@ const ArabicAnnotationTool = () => {
       }).join(' ');
     }).join('\n');
 
+    const timestamp = getTimestamp();
+    const baseInputName = inputFileName ? getFileBaseName(inputFileName) : 'arabic_text';
+    const filePrefix = `${baseInputName}_${annotatorName}_${timestamp}`;
+
     const report = {
       annotator: annotatorName,
+      inputFileName: inputFileName,
       exportDate: new Date().toISOString(),
       totalSentences: sentences.length,
       totalCorrections: history.length,
@@ -338,6 +368,7 @@ const ArabicAnnotationTool = () => {
       corrections,
       history,
       annotatorName,
+      inputFileName,
       exportDate: new Date().toISOString()
     };
 
@@ -345,24 +376,24 @@ const ArabicAnnotationTool = () => {
     const textUrl = URL.createObjectURL(textBlob);
     const textLink = document.createElement('a');
     textLink.href = textUrl;
-    textLink.download = `${annotatorName}_vocalized_output.txt`;
+    textLink.download = `${filePrefix}_vocalized.txt`;
     textLink.click();
 
     const reportBlob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
     const reportUrl = URL.createObjectURL(reportBlob);
     const reportLink = document.createElement('a');
     reportLink.href = reportUrl;
-    reportLink.download = `${annotatorName}_annotation_report.json`;
+    reportLink.download = `${filePrefix}_report.json`;
     reportLink.click();
 
     const recoveryBlob = new Blob([JSON.stringify(recoveryData, null, 2)], { type: 'application/json' });
     const recoveryUrl = URL.createObjectURL(recoveryBlob);
     const recoveryLink = document.createElement('a');
     recoveryLink.href = recoveryUrl;
-    recoveryLink.download = `${annotatorName}_recovery_backup.json`;
+    recoveryLink.download = `${filePrefix}_recovery.json`;
     recoveryLink.click();
 
-    alert(`Exported:\n- ${annotatorName}_vocalized_output.txt\n- ${annotatorName}_annotation_report.json\n- ${annotatorName}_recovery_backup.json (for recovery)`);
+    alert(`Exported:\n- ${filePrefix}_vocalized.txt\n- ${filePrefix}_report.json\n- ${filePrefix}_recovery.json`);
   };
 
   const getDiacriticForChar = (charObj) => {
@@ -501,6 +532,7 @@ const ArabicAnnotationTool = () => {
                 Char {selectedCharIdx + 1}/{totalChars} • 
                 {history.length} corrections
                 {annotatorName && <span className="ml-2">• Annotator: <strong>{annotatorName}</strong></span>}
+                {inputFileName && <span className="ml-2">• File: <strong>{inputFileName}</strong></span>}
               </p>
             </div>
             <div className="flex gap-2">
@@ -727,6 +759,21 @@ const ArabicAnnotationTool = () => {
             </div>
 
             <div className="bg-white rounded-lg shadow p-4">
+              <h3 className="font-semibold text-gray-800 mb-3">📁 Input File</h3>
+              <div className="text-sm">
+                {inputFileName ? (
+                  <div className="p-2 bg-blue-50 rounded border border-blue-200">
+                    <div className="font-mono text-blue-700 break-all">{inputFileName}</div>
+                  </div>
+                ) : (
+                  <div className="p-2 bg-gray-50 rounded border border-gray-200 text-gray-500">
+                    No file loaded
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-4">
               <h3 className="font-semibold text-gray-800 mb-3">⌨️ Navigation</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -804,15 +851,14 @@ const ArabicAnnotationTool = () => {
             <strong>💡 Quick Start:</strong> Words are separated by light bars for clarity while maintaining natural Arabic flow. 
             Use left/right arrows (← →) to navigate characters within the current phrase. 
             Use up/down arrows (↑ ↓) to switch between phrases. 
-            Press number keys 1-9 to apply diacritics. Set your name to export files as <strong>YourName_vocalized_output.txt</strong>
+            Press number keys 1-9 to apply diacritics.
           </p>
         </div>
 
         <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3">
           <p className="text-sm text-green-900">
-            <strong>💾 Auto-Save & Recovery:</strong> Your work is automatically saved in browser cache. 
-            When you export, a recovery backup file (<strong>*_recovery_backup.json</strong>) is created. 
-            If cache is cleared, use the <strong>Recover</strong> button to restore your work from this backup file.
+            <strong>💾 Export Format:</strong> Files are named as <strong>{inputFileName ? getFileBaseName(inputFileName) : 'inputfile'}_annotatorname_timestamp</strong>. 
+            Three files are exported: vocalized text (.txt), annotation report (.json), and recovery backup (.json).
           </p>
         </div>
       </div>
