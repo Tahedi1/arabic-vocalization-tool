@@ -49,13 +49,13 @@ const ArabicAnnotationTool = () => {
     { name: 'Sh+Fatha', symbol: '\u0651\u064E', key: '6' },
     { name: 'Sh+Damma', symbol: '\u0651\u064F', key: '7' },
     { name: 'Sh+Kasra', symbol: '\u0651\u0650', key: '8' },
-    { name: 'Fathatan', symbol: '\u064B', key: '9' },
-    { name: 'Dammatan', symbol: '\u064C', key: 'Q' },
-    { name: 'Kasratan', symbol: '\u064D', key: 'W' },
-    { name: 'Sh+Fathatan', symbol: '\u0651\u064B', key: 'E' },
-    { name: 'Sh+Dammatan', symbol: '\u0651\u064C', key: 'R' },
-    { name: 'Sh+Kasratan', symbol: '\u0651\u064D', key: 'T' },
-    { name: 'Sh+Sukoon', symbol: '\u0651\u0652', key: 'Y' },
+    { name: 'Sh+Sukoon', symbol: '\u0651\u0652', key: '9' },
+    { name: 'Fathatan', symbol: '\u064B', key: 'Q' },
+    { name: 'Dammatan', symbol: '\u064C', key: 'W' },
+    { name: 'Kasratan', symbol: '\u064D', key: 'E' },
+    { name: 'Sh+Fathatan', symbol: '\u0651\u064B', key: 'R' },
+    { name: 'Sh+Dammatan', symbol: '\u0651\u064C', key: 'T' },
+    { name: 'Sh+Kasratan', symbol: '\u0651\u064D', key: 'Y' },
   ];
 
   useEffect(() => {
@@ -807,14 +807,14 @@ const ArabicAnnotationTool = () => {
             <div className="bg-white rounded-lg shadow p-4">
               <h3 className="font-semibold text-gray-800 mb-3">Diacritics</h3>
               <div className="space-y-1 text-xs">
-                {diacritics.slice(0, 9).map((d, idx) => (
+                {diacritics.slice(0, 10).map((d, idx) => (
                   <div key={idx} className="flex justify-between">
                     <span>{d.name}</span>
                     <kbd className="px-1.5 py-0.5 bg-gray-200 rounded font-mono">{d.key}</kbd>
                   </div>
                 ))}
                 <div className="pt-1 border-t border-gray-200 text-gray-500">
-                  + {diacritics.length - 9} more (Q,W,E,R,T,Y...)
+                  + {diacritics.length - 10} more (Q,W,E,R,T,Y...)
                 </div>
               </div>
             </div>
