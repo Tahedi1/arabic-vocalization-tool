@@ -40,18 +40,22 @@ const ArabicAnnotationTool = () => {
   const recoveryFileInputRef = useRef(null);
 
   const diacritics = [
+    { name: 'No Diacritic', symbol: '', key: '0' },
     { name: 'Fatha', symbol: '\u064E', key: '1' },
     { name: 'Damma', symbol: '\u064F', key: '2' },
     { name: 'Kasra', symbol: '\u0650', key: '3' },
-    { name: 'Sukun', symbol: '\u0652', key: '4' },
+    { name: 'Sukoon', symbol: '\u0652', key: '4' },
     { name: 'Shadda', symbol: '\u0651', key: '5' },
-    { name: 'Tanwin F', symbol: '\u064B', key: '6' },
-    { name: 'Tanwin D', symbol: '\u064C', key: '7' },
-    { name: 'Tanwin K', symbol: '\u064D', key: '8' },
-    { name: 'Sh+Fatha', symbol: '\u0651\u064E', key: '9' },
-    { name: 'Sh+Damma', symbol: '\u0651\u064F', key: 'Q' },
-    { name: 'Sh+Kasra', symbol: '\u0651\u0650', key: 'W' },
-    { name: 'Remove', symbol: '', key: '0' },
+    { name: 'Sh+Fatha', symbol: '\u0651\u064E', key: '6' },
+    { name: 'Sh+Damma', symbol: '\u0651\u064F', key: '7' },
+    { name: 'Sh+Kasra', symbol: '\u0651\u0650', key: '8' },
+    { name: 'Fathatan', symbol: '\u064B', key: '9' },
+    { name: 'Dammatan', symbol: '\u064C', key: 'Q' },
+    { name: 'Kasratan', symbol: '\u064D', key: 'W' },
+    { name: 'Sh+Fathatan', symbol: '\u0651\u064B', key: 'E' },
+    { name: 'Sh+Dammatan', symbol: '\u0651\u064C', key: 'R' },
+    { name: 'Sh+Kasratan', symbol: '\u0651\u064D', key: 'T' },
+    { name: 'Sh+Sukoon', symbol: '\u0651\u0652', key: 'Y' },
   ];
 
   useEffect(() => {
@@ -198,7 +202,7 @@ const ArabicAnnotationTool = () => {
       navigateChar('next');
     }
     
-    const diacritic = diacritics.find(d => d.key === e.key);
+    const diacritic = diacritics.find(d => d.key === e.key || d.key === e.key.toUpperCase());
     if (diacritic) {
       e.preventDefault();
       updateDiacritic(diacritic.symbol);
@@ -387,7 +391,7 @@ const ArabicAnnotationTool = () => {
     reportLink.click();
 
     const recoveryBlob = new Blob([JSON.stringify(recoveryData, null, 2)], { type: 'application/json' });
-    const recoveryUrl = URL.createObjectURL(recoveryBlob);
+    const recoveryUrl = URL.createObjectURL(recoveryUrl);
     const recoveryLink = document.createElement('a');
     recoveryLink.href = recoveryUrl;
     recoveryLink.download = `${filePrefix}_recovery.json`;
@@ -699,8 +703,8 @@ const ArabicAnnotationTool = () => {
             </div>
 
             <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-300">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Select Diacritic (or press number key)</h3>
-              <div className="grid grid-cols-6 gap-2">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Select Diacritic (or press key)</h3>
+              <div className="grid grid-cols-8 gap-2">
                 {diacritics.map((d, idx) => {
                   const currentDiacritic = currentChar ? getDiacriticForChar(currentChar) : '';
                   const isActive = currentDiacritic === d.symbol;
@@ -718,6 +722,7 @@ const ArabicAnnotationTool = () => {
                           ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-400' 
                           : 'bg-white border-gray-300 hover:border-blue-400'}
                       `}
+                      title={d.name}
                     >
                       <div className="text-2xl mb-1" style={{ fontFamily: 'Amiri' }}>
                         {currentChar ? currentChar.char : 'ل'}{d.symbol}
@@ -802,12 +807,15 @@ const ArabicAnnotationTool = () => {
             <div className="bg-white rounded-lg shadow p-4">
               <h3 className="font-semibold text-gray-800 mb-3">Diacritics</h3>
               <div className="space-y-1 text-xs">
-                {diacritics.slice(0, 8).map((d, idx) => (
+                {diacritics.slice(0, 9).map((d, idx) => (
                   <div key={idx} className="flex justify-between">
                     <span>{d.name}</span>
                     <kbd className="px-1.5 py-0.5 bg-gray-200 rounded font-mono">{d.key}</kbd>
                   </div>
                 ))}
+                <div className="pt-1 border-t border-gray-200 text-gray-500">
+                  + {diacritics.length - 9} more (Q,W,E,R,T,Y...)
+                </div>
               </div>
             </div>
 
@@ -851,7 +859,7 @@ const ArabicAnnotationTool = () => {
             <strong>💡 Quick Start:</strong> Words are separated by light bars for clarity while maintaining natural Arabic flow. 
             Use left/right arrows (← →) to navigate characters within the current phrase. 
             Use up/down arrows (↑ ↓) to switch between phrases. 
-            Press number keys 1-9 to apply diacritics.
+            Press keys 0-9 and Q,W,E,R,T,Y to apply diacritics quickly.
           </p>
         </div>
 
