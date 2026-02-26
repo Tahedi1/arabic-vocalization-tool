@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Check, RotateCcw, Download, Upload, ChevronLeft, ChevronRight, ArrowLeft, ArrowRight, User } from 'lucide-react';
 
 const ArabicAnnotationTool = () => {
@@ -38,6 +38,19 @@ const ArabicAnnotationTool = () => {
   const [showNameDialog, setShowNameDialog] = useState(false);
   const fileInputRef = useRef(null);
   const recoveryFileInputRef = useRef(null);
+
+  // Use refs to always have current values in event handlers (avoids stale closures)
+  const sentencesRef = useRef(sentences);
+  const currentSentenceIdxRef = useRef(currentSentenceIdx);
+  const selectedCharIdxRef = useRef(selectedCharIdx);
+  const correctionsRef = useRef(corrections);
+  const historyRef = useRef(history);
+
+  useEffect(() => { sentencesRef.current = sentences; }, [sentences]);
+  useEffect(() => { currentSentenceIdxRef.current = currentSentenceIdx; }, [currentSentenceIdx]);
+  useEffect(() => { selectedCharIdxRef.current = selectedCharIdx; }, [selectedCharIdx]);
+  useEffect(() => { correctionsRef.current = corrections; }, [corrections]);
+  useEffect(() => { historyRef.current = history; }, [history]);
 
   const diacritics = [
     { name: 'No Diacritic', symbol: '', key: '0' },
@@ -131,30 +144,47 @@ const ArabicAnnotationTool = () => {
     });
   };
 
-  const getCurrentChar = () => {
+  const getCurrentChar = useCallback(() => {
     if (!sentences[currentSentenceIdx]) return null;
     const allChars = sentences[currentSentenceIdx].words.flat();
     return allChars[selectedCharIdx];
-  };
+  }, [sentences, currentSentenceIdx, selectedCharIdx]);
 
-  const getTotalCharsInSentence = () => {
+  const getTotalCharsInSentence = useCallback(() => {
     if (!sentences[currentSentenceIdx]) return 0;
     return sentences[currentSentenceIdx].words.flat().length;
+  }, [sentences, currentSentenceIdx]);
+
+  // Helper that reads from refs (for use inside keydown handler)
+  const getCurrentCharFromRef = () => {
+    const sents = sentencesRef.current;
+    const sIdx = currentSentenceIdxRef.current;
+    const cIdx = selectedCharIdxRef.current;
+    if (!sents[sIdx]) return null;
+    const allChars = sents[sIdx].words.flat();
+    return allChars[cIdx];
   };
 
-  const updateDiacritic = (newDiacritic) => {
+  const getTotalCharsFromRef = () => {
+    const sents = sentencesRef.current;
+    const sIdx = currentSentenceIdxRef.current;
+    if (!sents[sIdx]) return 0;
+    return sents[sIdx].words.flat().length;
+  };
+
+  const updateDiacritic = useCallback((newDiacritic) => {
     const currentChar = getCurrentChar();
     if (!currentChar) return;
 
     const key = `${currentSentenceIdx}-${currentChar.globalIndex}`;
-    const oldValue = corrections[key] || currentChar.diacritic;
+    const oldValue = corrections[key] !== undefined ? corrections[key] : currentChar.diacritic;
     
-    setCorrections({
-      ...corrections,
+    setCorrections(prev => ({
+      ...prev,
       [key]: newDiacritic
-    });
+    }));
 
-    setHistory([...history, {
+    setHistory(prev => [...prev, {
       sentenceIdx: currentSentenceIdx,
       charIdx: currentChar.globalIndex,
       char: currentChar.char,
@@ -162,83 +192,137 @@ const ArabicAnnotationTool = () => {
       new: newDiacritic,
       timestamp: new Date()
     }]);
-  };
+  }, [getCurrentChar, currentSentenceIdx, corrections]);
 
-  const navigateChar = (direction) => {
+  const navigateChar = useCallback((direction) => {
     const total = getTotalCharsInSentence();
     if (direction === 'next') {
-      if (selectedCharIdx < total - 1) {
-        setSelectedCharIdx(selectedCharIdx + 1);
-      }
+      setSelectedCharIdx(prev => prev < total - 1 ? prev + 1 : prev);
     } else {
-      if (selectedCharIdx > 0) {
-        setSelectedCharIdx(selectedCharIdx - 1);
+      setSelectedCharIdx(prev => prev > 0 ? prev - 1 : prev);
+    }
+  }, [getTotalCharsInSentence]);
+
+  const navigateSentence = useCallback((direction) => {
+    if (direction === 'next') {
+      setSentences(s => {
+        if (currentSentenceIdxRef.current < s.length - 1) {
+          setCurrentSentenceIdx(prev => prev + 1);
+          setSelectedCharIdx(0);
+        }
+        return s;
+      });
+    } else if (direction === 'prev') {
+      if (currentSentenceIdxRef.current > 0) {
+        setCurrentSentenceIdx(prev => prev - 1);
+        setSelectedCharIdx(0);
       }
     }
-  };
+  }, []);
 
-  const navigateSentence = (direction) => {
-    if (direction === 'next' && currentSentenceIdx < sentences.length - 1) {
-      setCurrentSentenceIdx(currentSentenceIdx + 1);
-      setSelectedCharIdx(0);
-    } else if (direction === 'prev' && currentSentenceIdx > 0) {
-      setCurrentSentenceIdx(currentSentenceIdx - 1);
-      setSelectedCharIdx(0);
-    }
-  };
+  const undo = useCallback(() => {
+    setHistory(prevHistory => {
+      if (prevHistory.length === 0) return prevHistory;
+      
+      const last = prevHistory[prevHistory.length - 1];
+      const key = `${last.sentenceIdx}-${last.charIdx}`;
+      
+      setCorrections(prevCorr => {
+        const newCorrections = { ...prevCorr };
+        if (last.old) {
+          newCorrections[key] = last.old;
+        } else {
+          delete newCorrections[key];
+        }
+        return newCorrections;
+      });
+      
+      return prevHistory.slice(0, -1);
+    });
+  }, []);
 
-  const handleKeyPress = (e) => {
+  // Stable keydown handler using refs to avoid stale closures
+  const handleKeyPress = useCallback((e) => {
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      navigateSentence('prev');
+      if (currentSentenceIdxRef.current > 0) {
+        setCurrentSentenceIdx(prev => prev - 1);
+        setSelectedCharIdx(0);
+      }
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      navigateSentence('next');
+      if (currentSentenceIdxRef.current < sentencesRef.current.length - 1) {
+        setCurrentSentenceIdx(prev => prev + 1);
+        setSelectedCharIdx(0);
+      }
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
-      navigateChar('prev');
+      const total = getTotalCharsFromRef();
+      setSelectedCharIdx(prev => prev > 0 ? prev - 1 : prev);
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      navigateChar('next');
+      const total = getTotalCharsFromRef();
+      setSelectedCharIdx(prev => prev < total - 1 ? prev + 1 : prev);
     }
     
-    const diacritic = diacritics.find(d => d.key === e.key || d.key === e.key.toUpperCase());
-    if (diacritic) {
+    const diacriticMatch = diacritics.find(d => d.key === e.key || d.key === e.key.toUpperCase());
+    if (diacriticMatch) {
       e.preventDefault();
-      updateDiacritic(diacritic.symbol);
-      navigateChar('next');
+      
+      // Use refs to get current values and functional updates to avoid stale closures
+      const currentChar = getCurrentCharFromRef();
+      if (!currentChar) return;
+      
+      const sIdx = currentSentenceIdxRef.current;
+      const corr = correctionsRef.current;
+      const key = `${sIdx}-${currentChar.globalIndex}`;
+      const oldValue = corr[key] !== undefined ? corr[key] : currentChar.diacritic;
+      
+      setCorrections(prev => ({
+        ...prev,
+        [key]: diacriticMatch.symbol
+      }));
+
+      setHistory(prev => [...prev, {
+        sentenceIdx: sIdx,
+        charIdx: currentChar.globalIndex,
+        char: currentChar.char,
+        old: oldValue,
+        new: diacriticMatch.symbol,
+        timestamp: new Date()
+      }]);
+
+      // Auto-advance to next character
+      const total = getTotalCharsFromRef();
+      setSelectedCharIdx(prev => prev < total - 1 ? prev + 1 : prev);
     }
     
     if (e.ctrlKey && e.key === 'z') {
       e.preventDefault();
-      undo();
+      setHistory(prevHistory => {
+        if (prevHistory.length === 0) return prevHistory;
+        const last = prevHistory[prevHistory.length - 1];
+        const key = `${last.sentenceIdx}-${last.charIdx}`;
+        setCorrections(prevCorr => {
+          const newCorrections = { ...prevCorr };
+          if (last.old) {
+            newCorrections[key] = last.old;
+          } else {
+            delete newCorrections[key];
+          }
+          return newCorrections;
+        });
+        return prevHistory.slice(0, -1);
+      });
     }
-  };
+  }, []); // Empty deps — uses refs internally
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [selectedCharIdx, currentSentenceIdx, corrections, sentences]);
-
-  const undo = () => {
-    if (history.length === 0) return;
-    
-    const last = history[history.length - 1];
-    const key = `${last.sentenceIdx}-${last.charIdx}`;
-    const newCorrections = { ...corrections };
-    
-    if (last.old) {
-      newCorrections[key] = last.old;
-    } else {
-      delete newCorrections[key];
-    }
-    
-    setCorrections(newCorrections);
-    setHistory(history.slice(0, -1));
-  };
+  }, [handleKeyPress]);
 
   const getFileBaseName = (filename) => {
-    // Remove extension from filename
     return filename.replace(/\.[^/.]+$/, '');
   };
 
@@ -391,7 +475,7 @@ const ArabicAnnotationTool = () => {
     reportLink.click();
 
     const recoveryBlob = new Blob([JSON.stringify(recoveryData, null, 2)], { type: 'application/json' });
-    const recoveryUrl = URL.createObjectURL(recoveryUrl);
+    const recoveryUrl = URL.createObjectURL(recoveryBlob);
     const recoveryLink = document.createElement('a');
     recoveryLink.href = recoveryUrl;
     recoveryLink.download = `${filePrefix}_recovery.json`;
