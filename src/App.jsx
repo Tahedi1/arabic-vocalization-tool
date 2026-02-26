@@ -2,40 +2,16 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Check, RotateCcw, Download, Upload, ChevronLeft, ChevronRight, ArrowLeft, ArrowRight, User } from 'lucide-react';
 
 const ArabicAnnotationTool = () => {
-  const [sentences, setSentences] = useState(() => {
-    const saved = localStorage.getItem('arabic_annotation_sentences');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [currentSentenceIdx, setCurrentSentenceIdx] = useState(() => {
-    const saved = localStorage.getItem('arabic_annotation_currentSentenceIdx');
-    return saved ? parseInt(saved) : 0;
-  });
-  const [selectedCharIdx, setSelectedCharIdx] = useState(() => {
-    const saved = localStorage.getItem('arabic_annotation_selectedCharIdx');
-    return saved ? parseInt(saved) : 0;
-  });
-  const [corrections, setCorrections] = useState(() => {
-    const saved = localStorage.getItem('arabic_annotation_corrections');
-    return saved ? JSON.parse(saved) : {};
-  });
-  const [history, setHistory] = useState(() => {
-    const saved = localStorage.getItem('arabic_annotation_history');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return parsed.map(item => ({
-        ...item,
-        timestamp: new Date(item.timestamp)
-      }));
-    }
-    return [];
-  });
-  const [annotatorName, setAnnotatorName] = useState(() => {
-    return localStorage.getItem('arabic_annotation_annotatorName') || '';
-  });
-  const [inputFileName, setInputFileName] = useState(() => {
-    return localStorage.getItem('arabic_annotation_inputFileName') || '';
-  });
+  const [sentences, setSentences] = useState([]);
+  const [currentSentenceIdx, setCurrentSentenceIdx] = useState(0);
+  const [selectedCharIdx, setSelectedCharIdx] = useState(0);
+  const [corrections, setCorrections] = useState({});
+  const [history, setHistory] = useState([]);
+  const [annotatorName, setAnnotatorName] = useState('');
+  const [inputFileName, setInputFileName] = useState('');
   const [showNameDialog, setShowNameDialog] = useState(false);
+  // A counter that increments on every correction to force re-render
+  const [correctionVersion, setCorrectionVersion] = useState(0);
   const fileInputRef = useRef(null);
   const recoveryFileInputRef = useRef(null);
 
@@ -70,34 +46,6 @@ const ArabicAnnotationTool = () => {
     { name: 'Sh+Dammatan', symbol: '\u0651\u064C', key: 'T' },
     { name: 'Sh+Kasratan', symbol: '\u0651\u064D', key: 'Y' },
   ];
-
-  useEffect(() => {
-    localStorage.setItem('arabic_annotation_sentences', JSON.stringify(sentences));
-  }, [sentences]);
-
-  useEffect(() => {
-    localStorage.setItem('arabic_annotation_currentSentenceIdx', currentSentenceIdx.toString());
-  }, [currentSentenceIdx]);
-
-  useEffect(() => {
-    localStorage.setItem('arabic_annotation_selectedCharIdx', selectedCharIdx.toString());
-  }, [selectedCharIdx]);
-
-  useEffect(() => {
-    localStorage.setItem('arabic_annotation_corrections', JSON.stringify(corrections));
-  }, [corrections]);
-
-  useEffect(() => {
-    localStorage.setItem('arabic_annotation_history', JSON.stringify(history));
-  }, [history]);
-
-  useEffect(() => {
-    localStorage.setItem('arabic_annotation_annotatorName', annotatorName);
-  }, [annotatorName]);
-
-  useEffect(() => {
-    localStorage.setItem('arabic_annotation_inputFileName', inputFileName);
-  }, [inputFileName]);
 
   const parseText = (text) => {
     const lines = text.split('\n').filter(line => line.trim());
@@ -183,6 +131,8 @@ const ArabicAnnotationTool = () => {
       ...prev,
       [key]: newDiacritic
     }));
+    // Force re-render by bumping version
+    setCorrectionVersion(v => v + 1);
 
     setHistory(prev => [...prev, {
       sentenceIdx: currentSentenceIdx,
@@ -236,6 +186,7 @@ const ArabicAnnotationTool = () => {
         }
         return newCorrections;
       });
+      setCorrectionVersion(v => v + 1);
       
       return prevHistory.slice(0, -1);
     });
@@ -257,7 +208,6 @@ const ArabicAnnotationTool = () => {
       }
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
-      const total = getTotalCharsFromRef();
       setSelectedCharIdx(prev => prev > 0 ? prev - 1 : prev);
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
@@ -269,7 +219,6 @@ const ArabicAnnotationTool = () => {
     if (diacriticMatch) {
       e.preventDefault();
       
-      // Use refs to get current values and functional updates to avoid stale closures
       const currentChar = getCurrentCharFromRef();
       if (!currentChar) return;
       
@@ -282,6 +231,8 @@ const ArabicAnnotationTool = () => {
         ...prev,
         [key]: diacriticMatch.symbol
       }));
+      // Force re-render
+      setCorrectionVersion(v => v + 1);
 
       setHistory(prev => [...prev, {
         sentenceIdx: sIdx,
@@ -312,10 +263,11 @@ const ArabicAnnotationTool = () => {
           }
           return newCorrections;
         });
+        setCorrectionVersion(v => v + 1);
         return prevHistory.slice(0, -1);
       });
     }
-  }, []); // Empty deps — uses refs internally
+  }, []);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyPress);
@@ -363,6 +315,7 @@ const ArabicAnnotationTool = () => {
         setCorrections({});
         setHistory([]);
         setInputFileName(file.name);
+        setCorrectionVersion(0);
       } else {
         alert('This file contains the same text as currently loaded.');
       }
@@ -404,6 +357,7 @@ const ArabicAnnotationTool = () => {
         
         setAnnotatorName(recoveryData.annotatorName || '');
         setInputFileName(recoveryData.inputFileName || '');
+        setCorrectionVersion(v => v + 1);
         
         alert('Recovery file loaded successfully!');
       } catch (error) {
@@ -486,12 +440,24 @@ const ArabicAnnotationTool = () => {
 
   const getDiacriticForChar = (charObj) => {
     const key = `${charObj.sentenceIdx}-${charObj.globalIndex}`;
-    return corrections[key] !== undefined ? corrections[key] : charObj.diacritic;
+    if (corrections[key] !== undefined) {
+      return corrections[key]; // This can be '' for "No Diacritic"
+    }
+    return charObj.diacritic;
   };
 
   const isCharCorrected = (charObj) => {
     const key = `${charObj.sentenceIdx}-${charObj.globalIndex}`;
     return corrections[key] !== undefined;
+  };
+
+  // Generate a unique key for each character span that includes the current diacritic value
+  // This forces React to remount the span when the diacritic changes (especially '' vs a combining char)
+  const getCharRenderKey = (charObj) => {
+    const diacritic = getDiacriticForChar(charObj);
+    // Encode the diacritic codepoints so React sees a different key
+    const diacriticCode = diacritic ? [...diacritic].map(c => c.charCodeAt(0).toString(16)).join('_') : 'none';
+    return `${charObj.sentenceIdx}-${charObj.globalIndex}-${diacriticCode}`;
   };
 
   if (sentences.length === 0) {
@@ -537,23 +503,6 @@ const ArabicAnnotationTool = () => {
           <p className="text-sm text-gray-500 mt-4">
             Supported formats: Plain text (.txt) or Recovery backup (.json)
           </p>
-          
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <p className="text-xs text-gray-600 mb-3">
-              💡 <strong>Tip:</strong> Export creates a recovery file that saves your complete progress
-            </p>
-            <button
-              onClick={() => {
-                if (window.confirm('Are you sure you want to clear all saved data?')) {
-                  localStorage.clear();
-                  window.location.reload();
-                }
-              }}
-              className="text-xs text-red-600 hover:text-red-700 underline"
-            >
-              Clear All Saved Data
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -704,6 +653,7 @@ const ArabicAnnotationTool = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div className="lg:col-span-3 bg-white rounded-lg shadow p-6">
+            {/* Natural Reading Preview - uses unique keys to force DOM update */}
             <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-6 border-2 border-green-300 mb-4" dir="rtl">
               <h3 className="text-sm font-semibold text-green-800 mb-3 text-left" dir="ltr">
                 📖 Natural Reading Preview
@@ -711,10 +661,16 @@ const ArabicAnnotationTool = () => {
               <div className="text-3xl leading-relaxed text-gray-800" style={{ fontFamily: 'Amiri, Arial' }}>
                 {currentSentence.words.map((word, wIdx) => (
                   <React.Fragment key={wIdx}>
-                    {word.map((charObj, cIdx) => {
+                    {word.map((charObj) => {
                       const diacritic = getDiacriticForChar(charObj);
+                      // Use a key that changes when the diacritic changes,
+                      // forcing React to replace the DOM node entirely.
+                      // This is critical for Arabic combining characters —
+                      // when removing a diacritic (setting to ''), the browser
+                      // may not re-render if React only updates textContent.
+                      const renderKey = getCharRenderKey(charObj);
                       return (
-                        <span key={cIdx}>
+                        <span key={renderKey}>
                           {charObj.char}{diacritic}
                         </span>
                       );
@@ -725,19 +681,21 @@ const ArabicAnnotationTool = () => {
               </div>
             </div>
 
+            {/* Annotation Area - also uses unique keys */}
             <div className="bg-amber-50 rounded-lg p-8 border-2 border-amber-200 mb-4">
               <div className="text-4xl leading-loose" style={{ fontFamily: 'Amiri, Arial', direction: 'rtl', textAlign: 'right' }}>
                 {currentSentence.words.map((word, wIdx) => (
                   <React.Fragment key={wIdx}>
                     <span className="inline-flex bg-white rounded px-2 py-1 shadow-sm border border-amber-300">
-                      {word.map((charObj, cIdx) => {
+                      {word.map((charObj) => {
                         const isSelected = charObj.globalIndex === selectedCharIdx;
                         const diacritic = getDiacriticForChar(charObj);
                         const isCorrected = isCharCorrected(charObj);
+                        const renderKey = getCharRenderKey(charObj);
                         
                         return (
                           <span
-                            key={cIdx}
+                            key={renderKey}
                             onClick={() => setSelectedCharIdx(charObj.globalIndex)}
                             className={`
                               relative inline-block px-0.5 cursor-pointer rounded transition-all
@@ -772,7 +730,7 @@ const ArabicAnnotationTool = () => {
               </button>
               <div className="flex-1 text-center bg-blue-50 rounded py-2 border border-blue-200">
                 {currentChar && (
-                  <span className="text-4xl" style={{ fontFamily: 'Amiri' }}>
+                  <span className="text-4xl" style={{ fontFamily: 'Amiri' }} key={getCharRenderKey(currentChar)}>
                     {currentChar.char}{getDiacriticForChar(currentChar)}
                   </span>
                 )}
